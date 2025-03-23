@@ -19,10 +19,6 @@ const data = {
       url: '/movies',
     },
     {
-      title: 'recommendations',
-      url: '/recommendations',
-    },
-    {
       title: 'profile',
       url: '/profile',
     },
