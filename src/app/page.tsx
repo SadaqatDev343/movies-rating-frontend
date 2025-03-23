@@ -1,5 +1,6 @@
 'use client';
-import React from 'react';
+
+import React, { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import {
@@ -12,20 +13,54 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useRouter } from 'next/navigation';
+import Alert from '@/components/ui/alert'; // Import the custom Alert component
 
 const Home = () => {
   const router = useRouter();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    // TODO: Add actual login logic here
-    router.push('/movies');
-  };
+    setError('');
+    setIsLoading(true);
 
-  const handleLoginSignup = (e: React.FormEvent) => {
-    e.preventDefault();
-    // TODO: Add actual login logic here
-    router.push('/signup');
+    try {
+      const baseUrl =
+        process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000';
+      const response = await fetch(`${baseUrl}/user/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'Login failed');
+      }
+
+      // Store token in localStorage
+      localStorage.setItem('token', data.token);
+
+      // Optional: Store user info if needed
+      if (data.user) {
+        localStorage.setItem('user', JSON.stringify(data.user));
+      }
+
+      // Redirect to movies page
+      router.push('/movies');
+    } catch (err) {
+      setError(
+        err instanceof Error ? err.message : 'An error occurred during login'
+      );
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -42,6 +77,7 @@ const Home = () => {
           </CardDescription>
         </CardHeader>
         <CardContent>
+          {error && <Alert variant='destructive'>{error}</Alert>}
           <form onSubmit={handleLogin}>
             <div className='flex flex-col gap-6'>
               <div className='grid gap-2'>
@@ -51,6 +87,8 @@ const Home = () => {
                   type='email'
                   placeholder='m@example.com'
                   required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                 />
               </div>
               <div className='grid gap-2'>
@@ -63,17 +101,23 @@ const Home = () => {
                     Forgot your password?
                   </a>
                 </div>
-                <Input id='password' type='password' required />
+                <Input
+                  id='password'
+                  type='password'
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
               </div>
-              <Button type='submit' className='w-full'>
-                Login
+              <Button type='submit' className='w-full' disabled={isLoading}>
+                {isLoading ? 'Logging in...' : 'Login'}
               </Button>
             </div>
             <div className='mt-4 text-center text-sm'>
               Don&apos;t have an account?{' '}
               <button
                 type='button'
-                onClick={handleLoginSignup}
+                onClick={() => router.push('/signup')}
                 className='underline underline-offset-4'
               >
                 Sign up
