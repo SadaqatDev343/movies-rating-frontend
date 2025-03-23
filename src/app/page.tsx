@@ -13,10 +13,12 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useRouter } from 'next/navigation';
-import Alert from '@/components/ui/alert'; // Import the custom Alert component
+import Alert from '@/components/ui/alert';
+import useAuthStore from './authStore';
 
-const Home = () => {
+const Page = () => {
   const router = useRouter();
+  const { setToken } = useAuthStore(); // Zustand's global state
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -44,15 +46,8 @@ const Home = () => {
         throw new Error(data.message || 'Login failed');
       }
 
-      // Store token in localStorage
-      localStorage.setItem('token', data.token);
+      setToken(data.token); // Store token globally
 
-      // Optional: Store user info if needed
-      if (data.user) {
-        localStorage.setItem('user', JSON.stringify(data.user));
-      }
-
-      // Redirect to movies page
       router.push('/movies');
     } catch (err) {
       setError(
@@ -124,4 +119,4 @@ const Home = () => {
   );
 };
 
-export default Home;
+export default Page;
