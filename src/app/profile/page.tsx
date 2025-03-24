@@ -30,6 +30,7 @@ interface CategoryObject {
 }
 
 interface UserData {
+  _id: string;
   name: string;
   email: string;
   address: string;
@@ -83,6 +84,7 @@ export default function ProfilePage() {
 
         // Format the user data
         const formattedUserData: UserData = {
+          _id: data.user._id,
           name: data.user.name,
           email: data.user.email,
           address: data.user.address,
