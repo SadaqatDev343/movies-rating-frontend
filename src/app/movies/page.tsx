@@ -1,7 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import Image from 'next/image';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { Badge, Search, Star } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
@@ -10,7 +9,6 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Skeleton } from '@/components/ui/skeleton';
-import { create } from 'zustand';
 import useAuthStore from '../authStore';
 
 interface Category {
@@ -44,6 +42,13 @@ interface RecommendedMovie {
   categories: string;
   averageRating: number;
 }
+
+interface CategoryObject {
+  _id: string;
+  name: string;
+  __v: number;
+}
+
 interface UserData {
   _id: string;
   name: string;
@@ -53,15 +58,17 @@ interface UserData {
   dob: Date;
   categories: CategoryObject[] | string[]; // Can be either objects or string IDs
 }
+
 interface MovieResponse {
   movies: Movie[];
-  total: number;
-  page: number;
-  limit: number;
+  totalMovies: number;
+  currentPage: number;
+  totalPages: number;
 }
 
 export default function Home() {
   const [searchQuery, setSearchQuery] = useState('');
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
   const [userRatedMovies, setUserRatedMovies] = useState<string[]>([]);
   const [movies, setMovies] = useState<Movie[]>([]);
   const [apiRecommendations, setApiRecommendations] = useState<
@@ -69,6 +76,7 @@ export default function Home() {
   >([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
   const [userData, setUserData] = useState<UserData | null>(null);
   const [recommendationsLoading, setRecommendationsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -78,8 +86,34 @@ export default function Home() {
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(12);
   const [totalMovies, setTotalMovies] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
   const [selectedTab, setSelectedTab] = useState('all');
   const { token } = useAuthStore();
+
+  const observer = useRef<IntersectionObserver | null>(null);
+  const lastMovieElementRef = useCallback(
+    (node) => {
+      if (loading || loadingMore) return;
+      if (observer.current) observer.current.disconnect();
+      observer.current = new IntersectionObserver((entries) => {
+        if (entries[0].isIntersecting && hasMore) {
+          loadMoreMovies();
+        }
+      });
+      if (node) observer.current.observe(node);
+    },
+    [loading, loadingMore, hasMore]
+  );
+
+  // Debounce search query
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery);
+      setPage(1); // Reset to page 1 when search changes
+      setMovies([]); // Clear current movies when search changes
+    }, 500);
+    return () => clearTimeout(timeoutId);
+  }, [searchQuery]);
 
   useEffect(() => {
     const fetchUserData = async () => {
@@ -131,6 +165,7 @@ export default function Home() {
 
     fetchUserData();
   }, [token]);
+
   // Fetch recommendations from API
   const fetchRecommendations = async () => {
     if (userData?._id) {
@@ -151,7 +186,7 @@ export default function Home() {
 
       const data: RecommendedMovie[] = await response.json();
 
-      console.log('Recommended Movies:', data); // ✅ Logs actual data
+      console.log('Recommended Movies:', data);
 
       setApiRecommendations(data);
     } catch (err) {
@@ -165,19 +200,28 @@ export default function Home() {
   };
 
   // Fetch movies from API
-  const fetchMovies = async () => {
+  const fetchMovies = async (pageNum = 1, replace = true) => {
     try {
-      setLoading(true);
+      if (pageNum === 1) {
+        setLoading(true);
+      } else {
+        setLoadingMore(true);
+      }
       setError(null);
 
       const queryParams = new URLSearchParams({
-        page: page.toString(),
+        page: pageNum.toString(),
         limit: limit.toString(),
       });
 
-      if (searchQuery) {
-        queryParams.append('q', searchQuery);
+      if (debouncedSearchQuery) {
+        queryParams.append('q', debouncedSearchQuery);
       }
+
+      console.log(
+        `Fetching movies for page ${pageNum} with params:`,
+        queryParams.toString()
+      );
 
       const response = await fetch(
         `http://localhost:3000/movies?${queryParams}`
@@ -188,12 +232,15 @@ export default function Home() {
       }
 
       const data: MovieResponse = await response.json();
+      console.log('Fetched movies data:', data);
 
       // Add userRating property to each movie
       const moviesWithUserRating = data.movies.map((movie) => {
         // Find if user has already rated this movie
         const userRating =
-          movie.ratings.find((r) => r.userId === userData?._id)?.rating || 0;
+          movie.ratings.find(
+            (r) => r.userId === userData?._id || r.user === userData?._id
+          )?.rating || 0;
 
         return {
           ...movie,
@@ -207,30 +254,48 @@ export default function Home() {
         .filter((movie) => movie.userRating > 0)
         .map((movie) => movie._id);
 
-      setUserRatedMovies(ratedMovieIds);
-      setMovies(moviesWithUserRating);
-      setTotalMovies(data.total);
+      setUserRatedMovies((prev) => [...new Set([...prev, ...ratedMovieIds])]);
+
+      if (replace) {
+        setMovies(moviesWithUserRating);
+      } else {
+        setMovies((prev) => [...prev, ...moviesWithUserRating]);
+      }
+
+      setTotalMovies(data.totalMovies);
+      setPage(data.currentPage);
+      setHasMore(data.currentPage < data.totalPages);
     } catch (err) {
       console.error('Error fetching movies:', err);
       setError(err instanceof Error ? err.message : 'An error occurred');
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
+  };
+
+  // Load more movies when user scrolls
+  const loadMoreMovies = () => {
+    if (!hasMore || loadingMore || loading) return;
+    const nextPage = page + 1;
+    console.log('Loading more movies, page:', nextPage);
+    fetchMovies(nextPage, false);
   };
 
   // Initial data loading
   useEffect(() => {
     const loadInitialData = async () => {
-      await Promise.all([fetchMovies(), fetchRecommendations()]);
+      await Promise.all([fetchMovies(1, true), fetchRecommendations()]);
     };
 
     loadInitialData();
   }, [userData?._id]);
 
-  // Handle pagination and search changes
+  // Handle search changes
   useEffect(() => {
-    fetchMovies();
-  }, [searchQuery, page, limit]);
+    if (debouncedSearchQuery !== searchQuery) return;
+    fetchMovies(1, true);
+  }, [debouncedSearchQuery]);
 
   // Fetch categories
   useEffect(() => {
@@ -303,17 +368,29 @@ export default function Home() {
       await fetchRecommendations();
 
       // Refetch all movies to get updated averages
-      await fetchMovies();
+      setPage(1);
+      fetchMovies(1, true);
     } catch (err) {
       console.error('Error rating movie:', err);
       setError(err instanceof Error ? err.message : 'An error occurred');
       // Rollback optimistic update on error
-      fetchMovies();
+      fetchMovies(1, true);
     }
   };
 
-  // Filter movies based on search query
-  const filteredMovies = movies;
+  // Handle tab change
+  const handleTabChange = (value: string) => {
+    setSelectedTab(value);
+    setPage(1);
+    setMovies([]);
+    fetchMovies(1, true);
+  };
+
+  // Filter movies based on selected tab
+  const filteredMovies =
+    selectedTab === 'all'
+      ? movies
+      : movies.filter((movie) => movie.categories.includes(selectedTab));
 
   if (error) {
     return (
@@ -324,7 +401,8 @@ export default function Home() {
           className='mt-4'
           onClick={() => {
             setError(null);
-            fetchMovies();
+            setPage(1);
+            fetchMovies(1, true);
           }}
         >
           Try Again
@@ -335,7 +413,7 @@ export default function Home() {
 
   return (
     <div className='min-h-screen bg-gray-50 pb-10'>
-      <header className='bg-white shadow'>
+      <header className='bg-white shadow sticky top-0 z-10'>
         <div className='container mx-auto px-4 py-6'>
           <div className='flex flex-col gap-4 md:flex-row md:items-center md:justify-between'>
             <h1 className='text-2xl font-bold text-gray-900'>MovieRater</h1>
@@ -408,129 +486,147 @@ export default function Home() {
           )}
         </section>
 
-        {loading ? (
-          <div className='grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4'>
-            {[...Array(8)].map((_, index) => (
-              <Card key={index} className='overflow-hidden'>
-                <Skeleton className='aspect-[2/3] w-full' />
-                <CardContent className='p-4'>
-                  <Skeleton className='h-4 w-3/4 mb-2' />
-                  <Skeleton className='h-4 w-1/4 mb-3' />
-                  <Skeleton className='h-4 w-full mb-2' />
-                  <div className='flex gap-1 mt-4'>
-                    {[...Array(5)].map((_, i) => (
-                      <Skeleton key={i} className='h-8 w-8 rounded-full' />
-                    ))}
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        ) : (
-          <>
-            <section>
-              <h2 className='mb-6 text-2xl font-bold text-gray-900'>
-                Movies Collection
-              </h2>
-              <Tabs
-                defaultValue='all'
-                value={selectedTab}
-                onValueChange={setSelectedTab}
-              >
-                <TabsList className='mb-6 flex flex-wrap'>
-                  <TabsTrigger key='all' value='all' className='capitalize'>
-                    All
-                  </TabsTrigger>
-                  {categories.map((category) => (
-                    <TabsTrigger
-                      key={category._id}
-                      value={category._id}
-                      className='capitalize'
-                    >
-                      {category.name}
-                    </TabsTrigger>
+        <section>
+          <h2 className='mb-6 text-2xl font-bold text-gray-900'>
+            Movies Collection
+          </h2>
+          <Tabs
+            defaultValue='all'
+            value={selectedTab}
+            onValueChange={handleTabChange}
+          >
+            <TabsList className='mb-6 flex flex-wrap'>
+              <TabsTrigger key='all' value='all' className='capitalize'>
+                All
+              </TabsTrigger>
+              {categories.map((category) => (
+                <TabsTrigger
+                  key={category._id}
+                  value={category._id}
+                  className='capitalize'
+                >
+                  {category.name}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+
+            <TabsContent value={selectedTab}>
+              {loading && page === 1 ? (
+                <div className='grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4'>
+                  {[...Array(8)].map((_, index) => (
+                    <Card key={index} className='overflow-hidden'>
+                      <Skeleton className='aspect-[2/3] w-full' />
+                      <CardContent className='p-4'>
+                        <Skeleton className='h-4 w-3/4 mb-2' />
+                        <Skeleton className='h-4 w-1/4 mb-3' />
+                        <Skeleton className='h-4 w-full mb-2' />
+                        <div className='flex gap-1 mt-4'>
+                          {[...Array(5)].map((_, i) => (
+                            <Skeleton
+                              key={i}
+                              className='h-8 w-8 rounded-full'
+                            />
+                          ))}
+                        </div>
+                      </CardContent>
+                    </Card>
                   ))}
-                </TabsList>
-
-                <TabsContent value='all'>
+                </div>
+              ) : (
+                <>
                   <div className='grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4'>
-                    {filteredMovies.map((movie) => (
-                      <MovieCard
-                        key={movie._id}
-                        movie={movie}
-                        onRate={handleRating}
-                        getCategoryName={getCategoryName}
-                      />
-                    ))}
-                  </div>
-                </TabsContent>
-
-                {categories.map((category) => (
-                  <TabsContent key={category._id} value={category._id}>
-                    <div className='grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4'>
-                      {filteredMovies
-                        .filter((movie) =>
-                          movie.categories.includes(category._id)
-                        )
-                        .map((movie) => (
+                    {filteredMovies.map((movie, index) => {
+                      if (filteredMovies.length === index + 1) {
+                        return (
+                          <div ref={lastMovieElementRef} key={movie._id}>
+                            <MovieCard
+                              movie={movie}
+                              onRate={handleRating}
+                              getCategoryName={getCategoryName}
+                            />
+                          </div>
+                        );
+                      } else {
+                        return (
                           <MovieCard
                             key={movie._id}
                             movie={movie}
                             onRate={handleRating}
                             getCategoryName={getCategoryName}
                           />
-                        ))}
+                        );
+                      }
+                    })}
+                  </div>
+
+                  {loadingMore && (
+                    <div className='grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 mt-6'>
+                      {[...Array(4)].map((_, index) => (
+                        <Card
+                          key={`loading-more-${index}`}
+                          className='overflow-hidden'
+                        >
+                          <Skeleton className='aspect-[2/3] w-full' />
+                          <CardContent className='p-4'>
+                            <Skeleton className='h-4 w-3/4 mb-2' />
+                            <Skeleton className='h-4 w-1/4 mb-3' />
+                            <Skeleton className='h-4 w-full mb-2' />
+                            <div className='flex gap-1 mt-4'>
+                              {[...Array(5)].map((_, i) => (
+                                <Skeleton
+                                  key={i}
+                                  className='h-8 w-8 rounded-full'
+                                />
+                              ))}
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
                     </div>
-                  </TabsContent>
-                ))}
-              </Tabs>
+                  )}
 
-              {totalMovies > limit && (
-                <div className='flex justify-center mt-8'>
-                  <Button
-                    variant='outline'
-                    disabled={page === 1}
-                    onClick={() => setPage((p) => Math.max(1, p - 1))}
-                    className='mr-2'
-                  >
-                    Previous
-                  </Button>
-                  <span className='flex items-center mx-4'>
-                    Page {page} of {Math.ceil(totalMovies / limit)}
-                  </span>
-                  <Button
-                    variant='outline'
-                    disabled={page >= Math.ceil(totalMovies / limit)}
-                    onClick={() => setPage((p) => p + 1)}
-                    className='ml-2'
-                  >
-                    Next
-                  </Button>
-                </div>
+                  {!loading && !loadingMore && filteredMovies.length > 0 && (
+                    <div className='text-center mt-8 p-4'>
+                      <p className='text-gray-600'>
+                        Showing {filteredMovies.length} of {totalMovies} movies
+                        {hasMore ? ' (Scroll for more)' : ''}
+                      </p>
+                      <p className='text-sm text-gray-500'>
+                        Page {page} of {Math.ceil(totalMovies / limit)}
+                      </p>
+                    </div>
+                  )}
+
+                  {!hasMore && filteredMovies.length > 0 && (
+                    <div className='text-center mt-8 p-4 bg-gray-100 rounded-lg'>
+                      <p className='text-gray-600'>No more movies to load</p>
+                    </div>
+                  )}
+                </>
               )}
-            </section>
+            </TabsContent>
+          </Tabs>
+        </section>
 
-            {userRatedMovies.length > 0 && (
-              <section className='mt-12'>
-                <h2 className='mb-6 text-2xl font-bold text-gray-900'>
-                  Your Rated Movies
-                </h2>
-                <div className='grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4'>
-                  {movies
-                    .filter((movie) => userRatedMovies.includes(movie._id))
-                    .sort((a, b) => (b.userRating || 0) - (a.userRating || 0))
-                    .map((movie) => (
-                      <MovieCard
-                        key={movie._id}
-                        movie={movie}
-                        onRate={handleRating}
-                        getCategoryName={getCategoryName}
-                      />
-                    ))}
-                </div>
-              </section>
-            )}
-          </>
+        {userRatedMovies.length > 0 && (
+          <section className='mt-12'>
+            <h2 className='mb-6 text-2xl font-bold text-gray-900'>
+              Your Rated Movies
+            </h2>
+            <div className='grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4'>
+              {movies
+                .filter((movie) => userRatedMovies.includes(movie._id))
+                .sort((a, b) => (b.userRating || 0) - (a.userRating || 0))
+                .map((movie) => (
+                  <MovieCard
+                    key={movie._id}
+                    movie={movie}
+                    onRate={handleRating}
+                    getCategoryName={getCategoryName}
+                  />
+                ))}
+            </div>
+          </section>
         )}
       </main>
     </div>
@@ -549,7 +645,6 @@ function MovieCard({ movie, onRate, getCategoryName }: MovieProps) {
     movie.categories.length > 0
       ? getCategoryName(movie.categories[0])
       : 'Uncategorized';
-  console.log('movie.poster', movie);
 
   return (
     <Card className='overflow-hidden transition-all hover:shadow-lg'>
