@@ -1718,6 +1718,10 @@
     --tw-enter-opacity: 0;
   }
 
+  .running {
+    animation-play-state: running;
+  }
+
   .zoom-in-95 {
     --tw-enter-scale: .95;
   }

@@ -177,7 +177,12 @@ export default function Home() {
       setRecommendationsError(null);
 
       const response = await fetch(
-        `http://localhost:3000/recommendation/${userData?._id}`
+        `http://localhost:3000/recommendation/${userData?._id}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
       );
 
       if (!response.ok) {
@@ -224,7 +229,12 @@ export default function Home() {
       );
 
       const response = await fetch(
-        `http://localhost:3000/movies?${queryParams}`
+        `http://localhost:3000/movies?${queryParams}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        }
       );
 
       if (!response.ok) {
