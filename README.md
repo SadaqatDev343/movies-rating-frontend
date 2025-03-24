@@ -1,36 +1,31 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+Movie Rating Frontend (Next.js)
 
-## Getting Started
+Description:
+This project is the frontend for the Movie Rating API, built with Next.js. It communicates with the backend API to fetch, display, and manage movie ratings. Below are the instructions to set up and run the frontend project on your local machine.
 
-First, run the development server:
+Prerequisites:
+Before running the project, make sure you have the following installed:
+- Node.js (v12 or higher)
+- npm (comes with Node.js)
+- Next.js (npm install will install dependencies)
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+Installation Steps:
+1. Clone the repository
+First, clone the repository to your local machine:
+    git clone https://github.com/yourusername/movie-rating-frontend.git
+    cd movie-rating-frontend
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+2. Install Dependencies
+Open a terminal and navigate to the movie-rating-frontend directory. Run the following command to install the necessary dependencies:
+    npm install
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+3. Set Up Environment Variables
+Create a `.env.local` file in the root of the project and add the following environment variable:
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+    NEXT_PUBLIC_API_BASE_URL=http://localhost:3000
 
-## Learn More
+This will ensure that the frontend communicates with the backend API running at `http://localhost:3000`.
 
-To learn more about Next.js, take a look at the following resources:
+4. Change the Default Port to 4002
+To run the application on port **4002**, create a `next.config.js` file in the root of your project (if it doesn't exist), and add the following configuration:
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
