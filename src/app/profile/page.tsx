@@ -141,18 +141,6 @@ export default function ProfilePage() {
     fetchCategories();
   }, []);
 
-  // Extract category IDs from userData.categories (which could be objects or strings)
-  const getUserCategoryIds = (): string[] => {
-    if (!userData?.categories || userData.categories.length === 0) return [];
-
-    // Check if categories are objects or strings
-    if (typeof userData.categories[0] === 'string') {
-      return userData.categories as string[];
-    } else {
-      return (userData.categories as CategoryObject[]).map((cat) => cat._id);
-    }
-  };
-
   // Get selected categories with labels for the MultiSelect
   const selectedCategories = tempUserData?.categories
     ? categoriesData.filter((category) => {
@@ -181,7 +169,7 @@ export default function ProfilePage() {
   };
 
   const handleSave = async () => {
-    if (!tempUserData || !token) return;
+    if (!tempUserData || !token || !tempUserData._id) return; // Ensure userId is available
 
     try {
       // Create form data if there's a new image
@@ -207,14 +195,17 @@ export default function ProfilePage() {
         formData.append('categories', category);
       });
 
-      // Send update request to API
-      const response = await fetch('http://localhost:3000/user/profile', {
-        method: 'PUT',
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-        body: formData,
-      });
+      // Send update request to API with userId
+      const response = await fetch(
+        `http://localhost:3000/user/profile/${tempUserData._id}`,
+        {
+          method: 'PUT',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          body: formData,
+        }
+      );
 
       if (!response.ok) {
         throw new Error(`Failed to update profile: ${response.statusText}`);
