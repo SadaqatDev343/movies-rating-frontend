@@ -472,25 +472,6 @@ export default function MoviesPage() {
             </TabsContent>
           </Tabs>
         </section>
-
-        {/* User Rated Movies Section */}
-        {userRatedMovies.length > 0 && (
-          <section className='mt-12'>
-            <h2 className='mb-6 text-2xl font-bold text-gray-900'>
-              Your Rated Movies
-            </h2>
-            <div className='grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4'>
-              {ratedMovies.map((movie) => (
-                <MovieCard
-                  key={movie._id}
-                  movie={movie}
-                  onRate={handleRating}
-                  getCategoryName={getCategoryName}
-                />
-              ))}
-            </div>
-          </section>
-        )}
       </main>
     </MainLayout>
   );
