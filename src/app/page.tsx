@@ -1,8 +1,11 @@
 'use client';
 
-import React, { useState } from 'react';
+import type React from 'react';
+
+import { useState, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { cn } from '@/lib/utils';
-import { Button } from '@/components/ui/button';
+
 import {
   Card,
   CardContent,
@@ -12,59 +15,65 @@ import {
 } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { useRouter } from 'next/navigation';
-import Alert from '@/components/ui/alert';
-import useAuthStore from './authStore';
+import { Alert } from '@/components/ui/alert';
+import { useLogin } from '@/hooks/use-auth';
+import { Film } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
-const Page = () => {
+interface FormData {
+  email: string;
+  password: string;
+}
+
+export default function LoginPage() {
   const router = useRouter();
-  const { setToken } = useAuthStore(); // Zustand's global state
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const login = useLogin();
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    setIsLoading(true);
+  const [formData, setFormData] = useState<FormData>({
+    email: '',
+    password: '',
+  });
 
-    try {
-      const baseUrl =
-        process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000';
-      const response = await fetch(`${baseUrl}/user/login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
+  // Handle input change
+  const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const { id, value } = e.target;
+    setFormData((prev) => ({
+      ...prev,
+      [id]: value,
+    }));
+  }, []);
+
+  // Handle form submission
+  const handleLogin = useCallback(
+    (e: React.FormEvent) => {
+      e.preventDefault();
+      login.mutate(formData, {
+        onSuccess: () => {
+          // Smooth transition to movies page
+          router.push('/movies');
         },
-        body: JSON.stringify({ email, password }),
       });
+    },
+    [formData, login, router]
+  );
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || 'Login failed');
-      }
-
-      setToken(data.token); // Store token globally
-
-      router.push('/movies');
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : 'An error occurred during login'
-      );
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  // Navigate to signup
+  const navigateToSignup = useCallback(() => {
+    router.push('/signup');
+  }, [router]);
 
   return (
     <div
       className={cn(
-        'flex flex-col items-center justify-center min-h-screen gap-6'
+        'flex flex-col items-center justify-center min-h-screen gap-6 bg-gray-50'
       )}
     >
-      <Card className='w-full lg:w-96'>
+      <div className='flex items-center mb-6'>
+        <Film className='h-10 w-10 text-primary mr-2' />
+        <h1 className='text-3xl font-bold'>MovieRater</h1>
+      </div>
+
+      <Card className='w-full max-w-md'>
         <CardHeader>
           <CardTitle className='text-2xl'>Login</CardTitle>
           <CardDescription>
@@ -72,7 +81,13 @@ const Page = () => {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {error && <Alert variant='destructive'>{error}</Alert>}
+          {login.error && (
+            <Alert variant='destructive' className='mb-4'>
+              {login.error instanceof Error
+                ? login.error.message
+                : 'An error occurred during login'}
+            </Alert>
+          )}
           <form onSubmit={handleLogin}>
             <div className='flex flex-col gap-6'>
               <div className='grid gap-2'>
@@ -82,8 +97,9 @@ const Page = () => {
                   type='email'
                   placeholder='m@example.com'
                   required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  value={formData.email}
+                  onChange={handleChange}
+                  disabled={login.isPending}
                 />
               </div>
               <div className='grid gap-2'>
@@ -94,20 +110,26 @@ const Page = () => {
                   id='password'
                   type='password'
                   required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  value={formData.password}
+                  onChange={handleChange}
+                  disabled={login.isPending}
                 />
               </div>
-              <Button type='submit' className='w-full' disabled={isLoading}>
-                {isLoading ? 'Logging in...' : 'Login'}
+              <Button
+                type='submit'
+                className='w-full'
+                disabled={login.isPending}
+              >
+                {login.isPending ? 'Logging in...' : 'Login'}
               </Button>
             </div>
             <div className='mt-4 text-center text-sm'>
               Don&apos;t have an account?{' '}
               <button
                 type='button'
-                onClick={() => router.push('/signup')}
+                onClick={navigateToSignup}
                 className='underline underline-offset-4'
+                disabled={login.isPending}
               >
                 Sign up
               </button>
@@ -117,6 +139,4 @@ const Page = () => {
       </Card>
     </div>
   );
-};
-
-export default Page;
+}
