@@ -42,7 +42,8 @@ export const authAPI = {
     return response.data;
   },
   getProfile: async () => {
-    const response = await api.get('/user/whoami');
+    const timestamp = new Date().getTime();
+    const response = await api.get(`/user/whoami?t=${timestamp}`);
     return response.data;
   },
   updateProfile: async (userId: string, formData: FormData) => {

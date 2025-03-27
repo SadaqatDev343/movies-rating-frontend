@@ -58,7 +58,6 @@ export function useUserProfile() {
     queryKey: ['user'],
     queryFn: authAPI.getProfile,
     select: (data) => {
-      // Format the user data
       return {
         _id: data.user._id,
         name: data.user.name,
@@ -66,16 +65,21 @@ export function useUserProfile() {
         address: data.user.address,
         image:
           data.user.image && data.user.image.startsWith('http')
-            ? data.user.image
+            ? `${data.user.image}?t=${new Date().getTime()}`
             : data.user.image
-            ? `http://localhost:3000/${data.user.image}`
+            ? `${process.env.NEXT_PUBLIC_API_BASE_URL}/${
+                data.user.image
+              }?t=${new Date().getTime()}`
             : '',
         dob: new Date(data.user.dob),
         categories: data.user.categories || [],
       };
     },
     enabled: !!token,
-    staleTime: 1000 * 60 * 5, // 5 minutes
+    staleTime: 0,
+    cacheTime: 0,
+    refetchOnMount: true,
+    refetchOnWindowFocus: true,
     retry: false,
   });
 }
@@ -87,7 +91,9 @@ export function useUpdateProfile() {
     mutationFn: ({ userId, formData }: UpdateProfileData) =>
       authAPI.updateProfile(userId, formData),
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['user'] });
+      queryClient.removeQueries({ queryKey: ['user'] });
+
+      queryClient.fetchQuery({ queryKey: ['user'] });
     },
   });
 }

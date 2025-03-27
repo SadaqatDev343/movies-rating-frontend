@@ -113,21 +113,28 @@ const ProfileForm = ({
     handleCategoryChange(newSelected);
   };
 
+  // Generate a unique timestamp for the image URL
+  const timestamp = useMemo(() => new Date().getTime(), []);
+
+  // Function to get the image URL with cache busting
+  const getImageUrl = useCallback(
+    (url: string | null | undefined) => {
+      if (!url) return null;
+      return url.includes('?') ? url : `${url}?t=${timestamp}`;
+    },
+    [timestamp]
+  );
+
   return (
     <div className='space-y-6'>
-      {/* Avatar Section */}
       <div className='flex flex-col items-center space-y-4'>
         <div className='relative'>
           <Avatar className='h-24 w-24 md:h-32 md:w-32'>
             <AvatarImage
               src={
                 previewImage ||
-                (tempUserData?.image && tempUserData.image !== ''
-                  ? tempUserData.image
-                  : null) ||
-                (userData.image && userData.image !== ''
-                  ? userData.image
-                  : null)
+                getImageUrl(tempUserData?.image) ||
+                getImageUrl(userData.image)
               }
               alt={tempUserData?.name || userData.name || 'User'}
             />
@@ -160,7 +167,6 @@ const ProfileForm = ({
         )}
       </div>
 
-      {/* Form Fields */}
       <div className='grid gap-4 md:grid-cols-2'>
         <div className='space-y-2'>
           <Label htmlFor='name'>Full Name</Label>
@@ -368,7 +374,6 @@ const ProfileForm = ({
   );
 };
 
-// Loading Skeleton Component
 const ProfileSkeleton = () => (
   <div className='space-y-6'>
     <div className='flex flex-col items-center space-y-4'>
@@ -386,7 +391,6 @@ const ProfileSkeleton = () => (
   </div>
 );
 
-// Error Component
 const ProfileError = ({
   error,
   onRetry,
@@ -406,7 +410,6 @@ const ProfileError = ({
   </div>
 );
 
-// Main Profile Page Component
 export default function ProfilePage() {
   const queryClient = useQueryClient();
   const { data: userData, isLoading, error, refetch } = useUserProfile();
@@ -417,11 +420,10 @@ export default function ProfilePage() {
   const [tempUserData, setTempUserData] = useState<any>(null);
   const [newImage, setNewImage] = useState<File | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [forceUpdate, setForceUpdate] = useState(0);
 
-  // Set initial temp data when user data loads
   useEffect(() => {
     if (userData && !tempUserData) {
-      // Create a deep copy and ensure dob is a Date object
       const userDataCopy = { ...userData };
       if (userDataCopy.dob && typeof userDataCopy.dob === 'string') {
         userDataCopy.dob = new Date(userDataCopy.dob);
@@ -430,7 +432,6 @@ export default function ProfilePage() {
     }
   }, [userData, tempUserData]);
 
-  // Transform categories for MultiSelect - memoized
   const categoriesData = useMemo(
     () =>
       categories.map((category: any) => ({
@@ -440,7 +441,6 @@ export default function ProfilePage() {
     [categories]
   );
 
-  // Get selected categories with labels for the MultiSelect - memoized
   const selectedCategories = useMemo(() => {
     if (!tempUserData?.categories) return [];
 
@@ -454,12 +454,10 @@ export default function ProfilePage() {
     );
   }, [tempUserData?.categories, categoriesData]);
 
-  // Handle edit toggle
   const handleEditToggle = useCallback(() => {
     if (!isEditing && userData) {
-      // Start editing - make a deep copy to avoid reference issues
       const userDataCopy = JSON.parse(JSON.stringify(userData));
-      // Ensure dob is a Date object after JSON parsing
+
       if (userDataCopy.dob) {
         userDataCopy.dob = new Date(userDataCopy.dob);
       }
@@ -476,23 +474,19 @@ export default function ProfilePage() {
     setIsEditing(false);
   }, [userData]);
 
-  // Handle save
   const handleSave = useCallback(() => {
     if (!tempUserData || !tempUserData._id) return;
 
-    // Create form data
     const formData = new FormData();
 
     if (newImage) {
       formData.append('image', newImage);
     }
 
-    // Add other user data
     formData.append('name', tempUserData.name);
     formData.append('email', tempUserData.email);
     formData.append('address', tempUserData.address);
 
-    // Ensure dob is properly handled as a Date
     let dobValue = tempUserData.dob;
     if (typeof dobValue === 'string') {
       dobValue = new Date(dobValue);
@@ -502,27 +496,13 @@ export default function ProfilePage() {
       dobValue instanceof Date ? dobValue.toISOString() : dobValue
     );
 
-    // Extract category IDs for saving
     const categoryIds =
       typeof tempUserData.categories[0] === 'string'
         ? tempUserData.categories
         : tempUserData.categories.map((cat: any) => cat.value || cat._id);
 
-    // Clear any existing categories to avoid duplicates
     categoryIds.forEach((category: string) => {
       formData.append('categories', category);
-    });
-
-    // Store current state for optimistic update
-    const previousUserData = userData;
-    const optimisticUserData = {
-      ...tempUserData,
-      image: previewImage || tempUserData.image,
-    };
-
-    // Optimistically update UI
-    queryClient.setQueryData(['user'], {
-      user: optimisticUserData,
     });
 
     updateProfile.mutate(
@@ -535,19 +515,17 @@ export default function ProfilePage() {
           setIsEditing(false);
           setPreviewImage(null);
           setNewImage(null);
+
           toast({
             title: 'Profile Updated',
             description: 'Your profile has been updated successfully',
           });
-          // Force refetch to update the UI with the latest data
+
           refetch();
+
+          setForceUpdate((prev) => prev + 1);
         },
         onError: (error) => {
-          // Revert to previous state on error
-          queryClient.setQueryData(['user'], {
-            user: previousUserData,
-          });
-
           toast({
             title: 'Update Failed',
             description:
@@ -559,17 +537,8 @@ export default function ProfilePage() {
         },
       }
     );
-  }, [
-    tempUserData,
-    newImage,
-    updateProfile,
-    refetch,
-    previewImage,
-    userData,
-    queryClient,
-  ]);
+  }, [tempUserData, newImage, updateProfile, refetch, setForceUpdate]);
 
-  // Handle image change
   const handleImageChange = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       if (e.target.files && e.target.files[0]) {
@@ -587,7 +556,6 @@ export default function ProfilePage() {
     []
   );
 
-  // Handle category change
   const handleCategoryChange = useCallback(
     (selectedOptions: OptionType[]) => {
       if (!tempUserData) return;
@@ -600,18 +568,15 @@ export default function ProfilePage() {
     [tempUserData]
   );
 
-  // Display category names - memoized
   const displayCategories = useCallback(() => {
     if (!userData?.categories || userData.categories.length === 0) {
       return 'No categories selected';
     }
 
-    // If categories are already objects with names, use those directly
     if (typeof userData.categories[0] !== 'string') {
       return (userData.categories as any[]).map((cat) => cat.name).join(', ');
     }
 
-    // Otherwise, look up names from the categories list
     const categoryIds = userData.categories as string[];
     const categoryNames = categoryIds.map((id) => {
       const category = categories.find((cat: any) => cat._id === id);
@@ -620,6 +585,8 @@ export default function ProfilePage() {
 
     return categoryNames.join(', ');
   }, [userData?.categories, categories]);
+
+  const key = useMemo(() => `profile-${forceUpdate}`, [forceUpdate]);
 
   return (
     <MainLayout>
@@ -652,6 +619,7 @@ export default function ProfilePage() {
             </div>
           ) : (
             <ProfileForm
+              key={key}
               userData={userData}
               tempUserData={tempUserData || userData}
               setTempUserData={setTempUserData}
