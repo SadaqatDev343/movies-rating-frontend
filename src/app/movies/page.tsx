@@ -16,9 +16,9 @@ import {
   useCategories,
 } from '@/hooks/use-movies';
 import { useInView } from 'react-intersection-observer';
-import { SiteHeader } from '@/components/site-header';
 import { Input } from '@/components/ui/input';
 import { MainLayout } from '@/components/main-layout';
+import { toast } from '@/components/ui/use-toast';
 
 // Types
 interface Movie {
@@ -47,10 +47,12 @@ const MovieCard = React.memo(
     movie,
     onRate,
     getCategoryName,
+    userId,
   }: {
     movie: Movie;
     onRate: (id: string, rating: number) => void;
     getCategoryName: (categoryId: string) => string;
+    userId: string | undefined;
   }) => {
     // Display the first category for the badge
     const primaryCategory = useMemo(
@@ -60,6 +62,27 @@ const MovieCard = React.memo(
           : 'Uncategorized',
       [movie.categories, getCategoryName]
     );
+
+    // Find user's rating for this movie
+    const userRating = useMemo(() => {
+      if (!userId) return 0;
+      const rating = movie.ratings.find((r) => r.userId === userId);
+      return rating ? rating.rating : 0;
+    }, [movie.ratings, userId]);
+
+    // Local state to handle optimistic UI updates
+    const [localRating, setLocalRating] = useState(userRating);
+
+    // Update local rating when userRating changes
+    useEffect(() => {
+      setLocalRating(userRating);
+    }, [userRating]);
+
+    // Handle rating click with optimistic update
+    const handleRatingClick = (movieId: string, rating: number) => {
+      setLocalRating(rating); // Update UI immediately
+      onRate(movieId, rating); // Send to server
+    };
 
     return (
       <Card className='overflow-hidden transition-all hover:shadow-lg'>
@@ -90,15 +113,13 @@ const MovieCard = React.memo(
                   variant='ghost'
                   size='icon'
                   className={`h-8 w-8 ${
-                    (movie.userRating || 0) >= star
-                      ? 'text-yellow-400'
-                      : 'text-gray-300'
+                    localRating >= star ? 'text-yellow-400' : 'text-gray-300'
                   }`}
-                  onClick={() => onRate(movie._id, star)}
+                  onClick={() => handleRatingClick(movie._id, star)}
                 >
                   <Star
                     className={`h-5 w-5 ${
-                      (movie.userRating || 0) >= star ? 'fill-yellow-400' : ''
+                      localRating >= star ? 'fill-yellow-400' : ''
                     }`}
                   />
                 </Button>
@@ -246,24 +267,22 @@ export default function MoviesPage() {
       moviesData?.pages.flatMap((page) =>
         page.movies.map((movie) => ({
           ...movie,
-          userRating:
-            movie.ratings.find((r) => r.userId === userData?._id)?.rating || 0,
           poster: movie.poster || '/placeholder.svg?height=400&width=300',
         }))
       ) || [],
-    [moviesData, userData?._id]
+    [moviesData]
   );
 
   // Update userRatedMovies array when movies change
   useEffect(() => {
-    if (movies.length > 0) {
+    if (movies.length > 0 && userData?._id) {
       const ratedMovieIds = movies
-        .filter((movie) => movie.userRating > 0)
+        .filter((movie) => movie.ratings.some((r) => r.userId === userData._id))
         .map((movie) => movie._id);
 
       setUserRatedMovies((prev) => [...new Set([...prev, ...ratedMovieIds])]);
     }
-  }, [movies]);
+  }, [movies, userData?._id]);
 
   // Get category name by ID - memoized
   const getCategoryName = useCallback(
@@ -278,7 +297,11 @@ export default function MoviesPage() {
   const handleRating = useCallback(
     async (movieId: string, rating: number) => {
       if (!userData?._id) {
-        alert('You must be logged in to rate movies');
+        toast({
+          title: 'Login Required',
+          description: 'You must be logged in to rate movies',
+          variant: 'destructive',
+        });
         return;
       }
 
@@ -287,15 +310,37 @@ export default function MoviesPage() {
         setUserRatedMovies((prev) => [...prev, movieId]);
       }
 
-      rateMovieMutation.mutate({
-        movieId,
-        rating: {
-          userId: userData._id,
-          rating,
+      rateMovieMutation.mutate(
+        {
+          movieId,
+          rating: {
+            userId: userData._id,
+            rating,
+          },
         },
-      });
+        {
+          onSuccess: () => {
+            toast({
+              title: 'Rating Submitted',
+              description: 'Your rating has been saved successfully',
+            });
+            // Force refetch to update the UI
+            refetchMovies();
+          },
+          onError: (error) => {
+            toast({
+              title: 'Rating Failed',
+              description:
+                error instanceof Error
+                  ? error.message
+                  : 'Failed to submit rating',
+              variant: 'destructive',
+            });
+          },
+        }
+      );
     },
-    [userData, userRatedMovies, rateMovieMutation]
+    [userData, userRatedMovies, rateMovieMutation, refetchMovies]
   );
 
   // Handle tab change
@@ -313,19 +358,28 @@ export default function MoviesPage() {
   );
 
   // Memoize rated movies
-  const ratedMovies = useMemo(
-    () =>
-      movies
-        .filter((movie) => userRatedMovies.includes(movie._id))
-        .sort((a, b) => (b.userRating || 0) - (a.userRating || 0)),
-    [movies, userRatedMovies]
-  );
+  const ratedMovies = useMemo(() => {
+    if (!userData?._id) return [];
+    return movies
+      .filter((movie) => movie.ratings.some((r) => r.userId === userData._id))
+      .sort((a, b) => {
+        const ratingA =
+          a.ratings.find((r) => r.userId === userData._id)?.rating || 0;
+        const ratingB =
+          b.ratings.find((r) => r.userId === userData._id)?.rating || 0;
+        return ratingB - ratingA;
+      });
+  }, [movies, userData?._id]);
 
   // Handle errors
   if (moviesError) {
     return (
-      <div className='min-h-screen'>
-        <SiteHeader />
+      <MainLayout>
+        <header className='sticky top-0 z-30 w-full bg-background border-b'>
+          <div className='flex h-16 items-center px-6'>
+            <h1 className='text-xl font-bold'>Movies</h1>
+          </div>
+        </header>
         <div className='container mx-auto px-4 py-8 text-center'>
           <h2 className='text-2xl font-bold text-red-600'>Error</h2>
           <p className='mt-4'>
@@ -337,7 +391,7 @@ export default function MoviesPage() {
             Try Again
           </Button>
         </div>
-      </div>
+      </MainLayout>
     );
   }
 
@@ -436,12 +490,13 @@ export default function MoviesPage() {
               ) : (
                 <>
                   <div className='grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4'>
-                    {filteredMovies.map((movie, index) => (
+                    {filteredMovies.map((movie) => (
                       <MovieCard
                         key={movie._id}
                         movie={movie}
                         onRate={handleRating}
                         getCategoryName={getCategoryName}
+                        userId={userData?._id}
                       />
                     ))}
                   </div>
@@ -472,6 +527,26 @@ export default function MoviesPage() {
             </TabsContent>
           </Tabs>
         </section>
+
+        {/* User Rated Movies Section */}
+        {ratedMovies.length > 0 && (
+          <section className='mt-12'>
+            <h2 className='mb-6 text-2xl font-bold text-gray-900'>
+              Your Rated Movies
+            </h2>
+            <div className='grid grid-cols-1 gap-6 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4'>
+              {ratedMovies.map((movie) => (
+                <MovieCard
+                  key={movie._id}
+                  movie={movie}
+                  onRate={handleRating}
+                  getCategoryName={getCategoryName}
+                  userId={userData?._id}
+                />
+              ))}
+            </div>
+          </section>
+        )}
       </main>
     </MainLayout>
   );
