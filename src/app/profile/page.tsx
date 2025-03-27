@@ -4,14 +4,13 @@ import type React from 'react';
 
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { format } from 'date-fns';
-import { Pencil, Save, User, X, ChevronDown } from 'lucide-react';
+import { Pencil, Save, User, X, ChevronDown, Check } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { CardDescription, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import type { OptionType } from '@/components/multi-select';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useUserProfile, useUpdateProfile } from '@/hooks/use-auth';
@@ -19,10 +18,16 @@ import { useCategories } from '@/hooks/use-movies';
 import { MainLayout } from '@/components/main-layout';
 import { toast } from '@/components/ui/use-toast';
 import { Badge } from '@/components/ui/badge';
-import { Check } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 
-// Profile Form Component
+import {
+  CategoryOption,
+  User as UserType,
+  ProfileFormProps,
+  ProfileErrorProps,
+  Category,
+} from '../types/types';
+
 const ProfileForm = ({
   userData,
   tempUserData,
@@ -37,26 +42,11 @@ const ProfileForm = ({
   handleSave,
   handleCancel,
   isUpdating,
-}: {
-  userData: any;
-  tempUserData: any;
-  setTempUserData: (data: any) => void;
-  isEditing: boolean;
-  categoriesData: OptionType[];
-  selectedCategories: OptionType[];
-  handleCategoryChange: (selected: OptionType[]) => void;
-  previewImage: string | null;
-  handleImageChange: (e: React.ChangeEvent<HTMLInputElement>) => void;
-  displayCategories: () => string;
-  handleSave: () => void;
-  handleCancel: () => void;
-  isUpdating: boolean;
-}) => {
+}: ProfileFormProps) => {
   const [categoryOpen, setCategoryOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
-  // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
@@ -78,7 +68,6 @@ const ProfileForm = ({
     };
   }, [categoryOpen]);
 
-  // Add keyboard event listener to close dropdown on Escape key
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && categoryOpen) {
@@ -95,8 +84,7 @@ const ProfileForm = ({
     };
   }, [categoryOpen]);
 
-  // Function to toggle category selection
-  const toggleCategory = (category: OptionType, e?: React.MouseEvent) => {
+  const toggleCategory = (category: CategoryOption, e?: React.MouseEvent) => {
     e?.stopPropagation();
 
     const isSelected = selectedCategories.some(
@@ -113,10 +101,8 @@ const ProfileForm = ({
     handleCategoryChange(newSelected);
   };
 
-  // Generate a unique timestamp for the image URL
   const timestamp = useMemo(() => new Date().getTime(), []);
 
-  // Function to get the image URL with cache busting
   const getImageUrl = useCallback(
     (url: string | null | undefined) => {
       if (!url) return null;
@@ -391,13 +377,7 @@ const ProfileSkeleton = () => (
   </div>
 );
 
-const ProfileError = ({
-  error,
-  onRetry,
-}: {
-  error: any;
-  onRetry: () => void;
-}) => (
+const ProfileError = ({ error, onRetry }: ProfileErrorProps) => (
   <div>
     <CardTitle className='text-2xl'>Error</CardTitle>
     <CardDescription>There was a problem loading your profile</CardDescription>
@@ -417,7 +397,7 @@ export default function ProfilePage() {
   const updateProfile = useUpdateProfile();
 
   const [isEditing, setIsEditing] = useState(false);
-  const [tempUserData, setTempUserData] = useState<any>(null);
+  const [tempUserData, setTempUserData] = useState<UserType | null>(null);
   const [newImage, setNewImage] = useState<File | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [forceUpdate, setForceUpdate] = useState(0);
@@ -434,7 +414,7 @@ export default function ProfilePage() {
 
   const categoriesData = useMemo(
     () =>
-      categories.map((category: any) => ({
+      categories.map((category: Category) => ({
         value: category._id,
         label: category.name,
       })),
@@ -446,10 +426,10 @@ export default function ProfilePage() {
 
     const categoryIds =
       typeof tempUserData.categories[0] === 'string'
-        ? tempUserData.categories
-        : tempUserData.categories.map((cat: any) => cat._id);
+        ? (tempUserData.categories as string[])
+        : (tempUserData.categories as Category[]).map((cat) => cat._id);
 
-    return categoriesData.filter((category: OptionType) =>
+    return categoriesData.filter((category: CategoryOption) =>
       categoryIds.includes(category.value)
     );
   }, [tempUserData?.categories, categoriesData]);
@@ -457,7 +437,6 @@ export default function ProfilePage() {
   const handleEditToggle = useCallback(() => {
     if (!isEditing && userData) {
       const userDataCopy = JSON.parse(JSON.stringify(userData));
-
       if (userDataCopy.dob) {
         userDataCopy.dob = new Date(userDataCopy.dob);
       }
@@ -466,7 +445,6 @@ export default function ProfilePage() {
     }
   }, [isEditing, userData]);
 
-  // Handle cancel
   const handleCancel = useCallback(() => {
     setTempUserData(userData ? { ...userData } : null);
     setPreviewImage(null);
@@ -493,13 +471,13 @@ export default function ProfilePage() {
     }
     formData.append(
       'dob',
-      dobValue instanceof Date ? dobValue.toISOString() : dobValue
+      dobValue instanceof Date ? dobValue.toISOString() : String(dobValue)
     );
 
     const categoryIds =
       typeof tempUserData.categories[0] === 'string'
-        ? tempUserData.categories
-        : tempUserData.categories.map((cat: any) => cat.value || cat._id);
+        ? (tempUserData.categories as string[])
+        : (tempUserData.categories as Category[]).map((cat) => cat._id);
 
     categoryIds.forEach((category: string) => {
       formData.append('categories', category);
@@ -545,7 +523,6 @@ export default function ProfilePage() {
         const file = e.target.files[0];
         setNewImage(file);
 
-        // Create a preview URL
         const reader = new FileReader();
         reader.onloadend = () => {
           setPreviewImage(reader.result as string);
@@ -557,7 +534,7 @@ export default function ProfilePage() {
   );
 
   const handleCategoryChange = useCallback(
-    (selectedOptions: OptionType[]) => {
+    (selectedOptions: CategoryOption[]) => {
       if (!tempUserData) return;
 
       setTempUserData({
@@ -574,12 +551,14 @@ export default function ProfilePage() {
     }
 
     if (typeof userData.categories[0] !== 'string') {
-      return (userData.categories as any[]).map((cat) => cat.name).join(', ');
+      return (userData.categories as Category[])
+        .map((cat) => cat.name)
+        .join(', ');
     }
 
     const categoryIds = userData.categories as string[];
     const categoryNames = categoryIds.map((id) => {
-      const category = categories.find((cat: any) => cat._id === id);
+      const category = categories.find((cat: Category) => cat._id === id);
       return category ? category.name : id;
     });
 

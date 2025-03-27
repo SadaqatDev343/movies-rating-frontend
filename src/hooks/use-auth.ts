@@ -2,27 +2,16 @@
 
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { authAPI } from '@/lib/api';
-import useAuthStore from '@/app/authStore';
+
 import { useRouter } from 'next/navigation';
-
-interface LoginCredentials {
-  email: string;
-  password: string;
-}
-
-interface SignupData {
-  name: string;
-  email: string;
-  password: string;
-  address: string;
-  dob: string;
-  categories: string[];
-}
-
-interface UpdateProfileData {
-  userId: string;
-  formData: FormData;
-}
+import {
+  LoginCredentials,
+  SignupData,
+  UpdateProfileData,
+  User,
+  UserResponse,
+} from '@/app/types/types';
+import useAuthStore from '@/app/store/authStore';
 
 export function useLogin() {
   const { setToken } = useAuthStore();
@@ -54,10 +43,11 @@ export function useSignup() {
 export function useUserProfile() {
   const { token } = useAuthStore();
 
-  return useQuery({
+  return useQuery<UserResponse, Error, User>({
     queryKey: ['user'],
     queryFn: authAPI.getProfile,
-    select: (data) => {
+    select: (data: UserResponse) => {
+      // Format the user data
       return {
         _id: data.user._id,
         name: data.user.name,

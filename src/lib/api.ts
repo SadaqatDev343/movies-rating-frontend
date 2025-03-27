@@ -1,13 +1,23 @@
 import axios from 'axios';
-import useAuthStore from '@/app/authStore';
 
-// Create an axios instance
+import {
+  LoginCredentials,
+  SignupData,
+  UserResponse,
+  MovieQueryParams,
+  MoviesResponse,
+  MovieRating,
+  RecommendedMovie,
+  CategoryResponse,
+  LoginResponse,
+} from '@/app/types/types';
+import useAuthStore from '@/app/store/authStore';
+
 export const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:3000',
   timeout: 10000,
 });
 
-// Add a request interceptor to include the auth token
 api.interceptors.request.use(
   (config) => {
     const token = useAuthStore.getState().token;
@@ -19,11 +29,9 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// Add a response interceptor to handle common errors
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    // Handle token expiration
     if (error.response?.status === 401) {
       useAuthStore.getState().clearToken();
     }
@@ -31,29 +39,42 @@ api.interceptors.response.use(
   }
 );
 
-// API functions
 export const authAPI = {
-  login: async (credentials: { email: string; password: string }) => {
-    const response = await api.post('/user/login', credentials);
+  login: async (credentials: LoginCredentials): Promise<LoginResponse> => {
+    const response = await api.post<LoginResponse>('/user/login', credentials);
     return response.data;
   },
-  signup: async (userData: any) => {
-    const response = await api.post('/user/signup', userData);
+  signup: async (userData: SignupData): Promise<{ message: string }> => {
+    const response = await api.post<{ message: string }>(
+      '/user/signup',
+      userData
+    );
     return response.data;
   },
-  getProfile: async () => {
+  getProfile: async (): Promise<UserResponse> => {
+    // Add a timestamp to prevent caching
     const timestamp = new Date().getTime();
-    const response = await api.get(`/user/whoami?t=${timestamp}`);
+    const response = await api.get<UserResponse>(`/user/whoami?t=${timestamp}`);
     return response.data;
   },
-  updateProfile: async (userId: string, formData: FormData) => {
-    const response = await api.put(`/user/profile/${userId}`, formData);
+  updateProfile: async (
+    userId: string,
+    formData: FormData
+  ): Promise<{ message: string }> => {
+    const response = await api.put<{ message: string }>(
+      `/user/profile/${userId}`,
+      formData
+    );
     return response.data;
   },
 };
 
 export const moviesAPI = {
-  getMovies: async ({ page = 1, limit = 12, search = '' }) => {
+  getMovies: async ({
+    page = 1,
+    limit = 12,
+    search = '',
+  }: MovieQueryParams): Promise<MoviesResponse> => {
     const params = new URLSearchParams({
       page: page.toString(),
       limit: limit.toString(),
@@ -63,25 +84,30 @@ export const moviesAPI = {
       params.append('q', search);
     }
 
-    const response = await api.get(`/movies?${params}`);
+    const response = await api.get<MoviesResponse>(`/movies?${params}`);
     return response.data;
   },
   rateMovie: async (
     movieId: string,
-    rating: { userId: string; rating: number }
-  ) => {
-    const response = await api.post(`/movies/${movieId}/rate`, rating);
+    rating: MovieRating
+  ): Promise<{ message: string }> => {
+    const response = await api.post<{ message: string }>(
+      `/movies/${movieId}/rate`,
+      rating
+    );
     return response.data;
   },
-  getRecommendations: async (userId: string) => {
-    const response = await api.get(`/recommendation/${userId}`);
+  getRecommendations: async (userId: string): Promise<RecommendedMovie[]> => {
+    const response = await api.get<RecommendedMovie[]>(
+      `/recommendation/${userId}`
+    );
     return response.data;
   },
 };
 
 export const categoriesAPI = {
-  getCategories: async () => {
-    const response = await api.get('/categories');
+  getCategories: async (): Promise<CategoryResponse[]> => {
+    const response = await api.get<CategoryResponse[]>('/categories');
     return response.data;
   },
 };
